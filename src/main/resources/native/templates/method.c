@@ -1,0 +1,6 @@
+{{DECLARATION}} {
+{{PROLOGUE}}
+{{BODY}}
+{{EPILOGUE}}
+}
+
