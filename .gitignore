@@ -1,0 +1,63 @@
+# Gradle
+/.gradle/
+/build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDEs and editors
+/.idea/
+/.vscode/
+/.trae/
+*.iws
+*.iml
+*.ipr
+/.classpath
+/.factorypath
+/.project
+/.settings/
+/.apt_generated/
+/.springBeans
+/.sts4-cache
+/out/
+/bin/
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# Local Zig toolchain and its extracted distribution
+/zig.exe
+/zig-*/
+/lib/
+/doc/
+/LICENSE
+/.zig-cache/
+/zig-cache/
+/zig-out/
+
+# Local inputs, generated outputs and native binaries
+/input.jar
+/output.jar
+/output*.jar
+/libs/
+*.dll
+*.so
+*.dylib
+
+# Logs, crash dumps and temporary files
+/logs/
+*.log
+hs_err_pid*
+replay_pid*
+*.tmp
+*.temp
+
+# Local helper scripts
+/bisect.py
+/check_braces.py
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

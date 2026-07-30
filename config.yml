@@ -1,0 +1,13 @@
+input: ./input.jar
+output: ./output.jar
+libs:
+  - ./libs
+annotationMode: true
+includes:
+  -
+excludes:
+  -
+obfuscation:
+  stringEncryption: false
+  flowObfuscation: false
+  antiDebug: true
