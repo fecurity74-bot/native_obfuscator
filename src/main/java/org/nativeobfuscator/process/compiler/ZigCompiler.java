@@ -26,6 +26,10 @@ public final class ZigCompiler {
         command.add(WINDOWS_TARGET);
         command.add("-shared");
         command.add("-O3");
+        command.add("-fvisibility=hidden");
+        command.add("-ffunction-sections");
+        command.add("-fdata-sections");
+        command.add("-Wl,--gc-sections");
         command.add("-o");
         command.add(output.getAbsolutePath());
         command.add(cFile.getAbsolutePath());

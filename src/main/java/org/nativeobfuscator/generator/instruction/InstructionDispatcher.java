@@ -53,6 +53,10 @@ public final class InstructionDispatcher {
         register(new MonitorInstructionHandler(), Opcodes.MONITORENTER, Opcodes.MONITOREXIT);
         register(new SwitchInstructionHandler(), Opcodes.TABLESWITCH, Opcodes.LOOKUPSWITCH);
         register(new MultiANewArrayHandler(), Opcodes.MULTIANEWARRAY);
+        register(new ArrayCreationInstructionHandler(),
+                Opcodes.NEWARRAY, Opcodes.ANEWARRAY, Opcodes.ARRAYLENGTH);
+        register(new TypeCheckInstructionHandler(), Opcodes.CHECKCAST, Opcodes.INSTANCEOF);
+        register(new ThrowInstructionHandler(), Opcodes.ATHROW);
     }
 
     public String generate(AbstractInsnNode instruction, InstructionContext context) {

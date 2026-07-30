@@ -61,3 +61,32 @@ java -jar build\libs\jnic.jar
 
 The generated Windows library is stored inside the output JAR as `j2c.dll` and
 loaded by `org.nativeobfuscator.NativeLoader`.
+
+## Native generation pipeline
+
+Native translation is split into independent stages:
+
+1. ASM bytecode analysis and instruction dispatch.
+2. Construction of a compact method IR retaining source indexes and opcodes.
+3. IR normalization and conservative peephole optimization.
+4. Class-lookup indirection and opaque control-flow insertion.
+5. Lowering through C templates stored under `src/main/resources/native/templates`.
+6. Manual JNI registration from `JNI_OnLoad`.
+
+The compiler uses `-O3` for the reusable runtime and registration code.
+Generated native method bodies alone are marked with `JNIC_NO_OPT`, preventing
+LLVM from removing their intentionally complicated control flow.
+
+Additional configuration:
+
+```yaml
+obfuscation:
+  ir: true
+  lifterResistance: true
+optimization:
+  ir: true
+```
+
+The lifter-resistance pass never changes Java semantics. Literal `FindClass`
+operations are represented by encrypted lookup data and decoy metadata, while
+the runtime helper always resolves the original requested class.

@@ -1,10 +1,19 @@
 package org.nativeobfuscator.generator;
 
-import org.nativeobfuscator.NativeObfuscator;
 import org.nativeobfuscator.config.Config;
 import org.nativeobfuscator.generator.instruction.InstructionContext;
 import org.nativeobfuscator.generator.instruction.InstructionDispatcher;
 import org.nativeobfuscator.generator.instruction.InvocationInstructionHandler;
+import org.nativeobfuscator.generator.ir.IrOperation;
+import org.nativeobfuscator.generator.ir.IrPass;
+import org.nativeobfuscator.generator.ir.IrPipeline;
+import org.nativeobfuscator.generator.ir.NativeMethodIr;
+import org.nativeobfuscator.generator.ir.pass.ClassLookupIndirectionPass;
+import org.nativeobfuscator.generator.ir.pass.LoweringMetadataPass;
+import org.nativeobfuscator.generator.ir.pass.NormalizeIrPass;
+import org.nativeobfuscator.generator.ir.pass.OpaqueControlFlowPass;
+import org.nativeobfuscator.generator.ir.pass.PeepholeOptimizationPass;
+import org.nativeobfuscator.generator.template.CTemplateRepository;
 import org.nativeobfuscator.utils.asm.ClassWrapper;
 import org.nativeobfuscator.utils.asm.MethodWrapper;
 import org.nativeobfuscator.process.NativeProcessor;
@@ -14,9 +23,9 @@ import org.objectweb.asm.tree.*;
 import org.objectweb.asm.tree.analysis.*;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -28,25 +37,11 @@ public class Generator {
     private final Obfuscator obfuscator;
     private final StringBuilder globalCode = new StringBuilder();
     private final InstructionDispatcher instructionDispatcher = new InstructionDispatcher();
+    private final CTemplateRepository templates = new CTemplateRepository();
+    private final NativeSourceAssembler sourceAssembler = new NativeSourceAssembler(templates);
+    private final IrPipeline irPipeline;
 
-    // Helper class for registration
-    private static class NativeEntry {
-        String className;
-        String methodName;
-        String signature;
-        String cFunctionName;
-        boolean isStatic;
-
-        NativeEntry(String c, String m, String s, String cf, boolean stat) {
-            className = c;
-            methodName = m;
-            signature = s;
-            cFunctionName = cf;
-            isStatic = stat;
-        }
-    }
-
-    private final List<NativeEntry> nativeEntries = new ArrayList<>();
+    private final List<NativeMethodBinding> nativeEntries = new ArrayList<>();
     private final Map<String, String> generatedMethods = new HashMap<>(); // Legacy map
     private final StringBuilder functionPrototypes = new StringBuilder(); // For forward declarations
 
@@ -62,34 +57,24 @@ public class Generator {
         this.processor = processor;
         this.config = processor.getNativeObfuscator().getConfig();
         this.obfuscator = new Obfuscator(config);
+        this.irPipeline = createIrPipeline(config);
+        globalCode.append(templates.load("preamble.c"));
+    }
 
-        // Add headers
-        // Use standard JNI header (must be provided in include path or same directory)
-        globalCode.append("#include \"jni.h\"\n");
-        globalCode.append("#include <stdint.h>\n");
-        globalCode.append("#include <stdlib.h>\n");
-        globalCode.append("#include <string.h>\n");
-        globalCode.append("#include <stdio.h>\n");
-        globalCode.append("#include <math.h>\n");
-        globalCode.append("#include <stdarg.h>\n\n");
-
-        // Define StackValue union
-        globalCode.append("typedef union {\n");
-        globalCode.append("    jint i;\n");
-        globalCode.append("    jlong j;\n");
-        globalCode.append("    jfloat f;\n");
-        globalCode.append("    jdouble d;\n");
-        globalCode.append("    jobject l;\n");
-        globalCode.append("} StackValue;\n\n");
-
-        // Add helper functions
-        globalCode.append(getHelperFunctions());
-
-        // Placeholder for prototypes - will be inserted here in finalizeGeneration if
-        // we use a different structure
-        // But since we append linearly, we need to insert them BEFORE methods.
-        // We can't insert into StringBuilder easily at specific index without shifting.
-        // Better: store methods in a separate buffer and combine at the end.
+    private IrPipeline createIrPipeline(Config config) {
+        List<IrPass> passes = new ArrayList<>();
+        passes.add(new NormalizeIrPass());
+        if (config.isIrOptimization()) {
+            passes.add(new PeepholeOptimizationPass());
+        }
+        if (config.isLifterResistance()) {
+            passes.add(new ClassLookupIndirectionPass());
+        }
+        if (config.isIrObfuscation()) {
+            passes.add(new OpaqueControlFlowPass());
+        }
+        passes.add(new LoweringMetadataPass());
+        return new IrPipeline(passes);
     }
 
     // Buffer for method implementations
@@ -496,22 +481,17 @@ public class Generator {
                 method.getOriginalDescriptor());
         Type returnType = Type.getReturnType(method.getOriginalDescriptor());
 
-        // Method Signature
-        methodBody.append("JNIEXPORT ").append(getJNIType(returnType)).append(" JNICALL ").append(functionName)
+        StringBuilder declaration = new StringBuilder();
+        declaration.append("static JNIC_NO_OPT ").append(getJNIType(returnType))
+                .append(" JNICALL ").append(functionName)
                 .append("(JNIEnv *env, jobject thiz");
         Type[] argTypes = Type.getArgumentTypes(method.getOriginalDescriptor());
         for (int i = 0; i < argTypes.length; i++) {
-            methodBody.append(", ").append(getJNIType(argTypes[i])).append(" arg").append(i);
+            declaration.append(", ").append(getJNIType(argTypes[i])).append(" arg").append(i);
         }
-        methodBody.append(") {\n");
+        declaration.append(')');
 
-        // Forward declaration
-        functionPrototypes.append("JNIEXPORT ").append(getJNIType(returnType)).append(" JNICALL ").append(functionName)
-                .append("(JNIEnv *env, jobject thiz");
-        for (int i = 0; i < argTypes.length; i++) {
-            functionPrototypes.append(", ").append(getJNIType(argTypes[i])).append(" arg").append(i);
-        }
-        functionPrototypes.append(");\n");
+        functionPrototypes.append(declaration).append(";\n");
 
         // Anti-Debug Injection
         methodBody.append(obfuscator.getAntiDebugCode());
@@ -584,23 +564,31 @@ public class Generator {
         currentMethodName = method.getOriginalName();
         currentClass = owner;
 
-        // Generate Code (Linear)
-        StringBuilder cBody = new StringBuilder();
+        // Lower bytecode into the custom IR. Labels and instructions remain
+        // distinct so optimization/obfuscation passes can make safe decisions.
+        List<IrOperation> operations = new ArrayList<>();
         int currentIndex = 0;
         for (AbstractInsnNode insn : instructions) {
-            // Insert Label
-            for (Map.Entry<LabelNode, Integer> entry : labelMap.entrySet()) {
-                if (entry.getValue() == currentIndex) {
-                    cBody.append("L").append(entry.getValue()).append(":;\n");
-                }
+            if (labelMap.containsValue(currentIndex)) {
+                operations.add(IrOperation.label(currentIndex, currentIndex));
             }
-
-            cBody.append(generateInstruction(insn, labelMap, currentIndex, returnType));
+            operations.add(IrOperation.instruction(
+                    currentIndex,
+                    insn.getOpcode(),
+                    generateInstruction(insn, labelMap, currentIndex, returnType)));
             currentIndex++;
-
         }
 
-        methodBody.append(cBody);
+        int irSeed = (owner.getName() + '\0' + method.getOriginalName()
+                + '\0' + method.getOriginalDescriptor()).hashCode();
+        NativeMethodIr ir = new NativeMethodIr(
+                owner.getName(),
+                method.getOriginalName(),
+                method.getOriginalDescriptor(),
+                functionName,
+                irSeed,
+                operations);
+        methodBody.append(irPipeline.lower(ir));
 
         // Default return for safety (void or zero)
         methodBody.append("    (*env)->PopLocalFrame(env, NULL);\n");
@@ -610,13 +598,16 @@ public class Generator {
             methodBody.append("    return 0;\n");
         }
 
-        methodBody.append("}\n\n");
-
-        String fullCode = methodBody.toString();
+        String fullCode = templates.render("method.c", Map.of(
+                "DECLARATION", declaration,
+                "PROLOGUE", "",
+                "BODY", methodBody,
+                "EPILOGUE", ""));
         methodImplementations.append(fullCode); // Append to buffer instead of globalCode
 
         generatedMethods.put(owner.getName() + "_" + method.getOriginalName(), functionName);
-        nativeEntries.add(new NativeEntry(owner.getName(), method.getOriginalName(), method.getOriginalDescriptor(),
+        nativeEntries.add(new NativeMethodBinding(
+                owner.getName(), method.getOriginalName(), method.getOriginalDescriptor(),
                 functionName, method.isStatic()));
 
         // Clear state
@@ -2444,111 +2435,15 @@ public class Generator {
     }
 
     public void finalizeGeneration() {
-        // Append prototypes
-        globalCode.append("\n// Forward Declarations\n");
-        globalCode.append(functionPrototypes);
-        globalCode.append("\n");
+        String source = sourceAssembler.assemble(
+                globalCode, functionPrototypes, methodImplementations, nativeEntries);
 
-        // Append method implementations
-        globalCode.append(methodImplementations);
-
-        // Generate JNI_OnLoad with global cache initialization
-        globalCode.append("JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {\n");
-        globalCode.append("    g_jvm = vm;\n");
-        globalCode.append("    JNIEnv* env;\n");
-        globalCode.append("    if ((*vm)->GetEnv(vm, (void**)&env, JNI_VERSION_1_6) == JNI_OK) {\n");
-        globalCode.append("        init_global_cache(env);\n");
-        globalCode.append("    }\n");
-        globalCode.append("    return JNI_VERSION_1_6;\n");
-        globalCode.append("}\n\n");
-
-        // Generate NativeLoader.registerNatives
-        globalCode.append(
-                "JNIEXPORT void JNICALL Java_org_nativeobfuscator_NativeLoader_registerNatives(JNIEnv *env, jclass loader, jclass target) {\n");
-
-        // Debug prints
-        globalCode
-                .append("    log_debug(\"NativeLoader_registerNatives called. env=%p, target=%p\\n\", env, target);\n");
-
-        globalCode.append("    if (target == NULL) {\n");
-        globalCode.append("        log_debug(\"target is NULL\\n\");\n");
-        globalCode.append("        return;\n");
-        globalCode.append("    }\n\n");
-
-        globalCode.append("    jclass cls_class = (*env)->GetObjectClass(env, target);\n");
-        globalCode.append(
-                "    jmethodID mid_getName = (*env)->GetMethodID(env, cls_class, \"getName\", \"()Ljava/lang/String;\");\n");
-        globalCode.append("    if (mid_getName == NULL) {\n");
-        globalCode.append("        log_debug(\"mid_getName is NULL\\n\");\n");
-        globalCode.append("        return;\n");
-        globalCode.append("    }\n\n");
-
-        globalCode.append("    jstring nameStr = (jstring)(*env)->CallObjectMethod(env, target, mid_getName);\n");
-        globalCode.append("    if (nameStr == NULL) {\n");
-        globalCode.append("        log_debug(\"nameStr is NULL\\n\");\n");
-        globalCode.append("        return;\n");
-        globalCode.append("    }\n\n");
-
-        globalCode.append("    const char *className = (*env)->GetStringUTFChars(env, nameStr, 0);\n");
-        globalCode.append("    if (className == NULL) {\n");
-        globalCode.append("        log_debug(\"className is NULL\\n\");\n");
-        globalCode.append("        return;\n");
-        globalCode.append("    }\n");
-        globalCode.append("    log_debug(\"Registering natives for class: %s\\n\", className);\n\n");
-
-        // Group methods by class
-        Map<String, List<NativeEntry>> classGroups = new HashMap<>();
-        for (NativeEntry entry : nativeEntries) {
-            classGroups.computeIfAbsent(entry.className, k -> new ArrayList<>()).add(entry);
-        }
-
-        boolean first = true;
-        for (Map.Entry<String, List<NativeEntry>> group : classGroups.entrySet()) {
-            String internalName = group.getKey(); // e.g. java/lang/String
-            String dotName = internalName.replace('/', '.');
-            List<NativeEntry> methods = group.getValue();
-            String safeClassName = internalName.replace('/', '_').replace('$', '_');
-
-            if (!first)
-                globalCode.append("    else ");
-            else
-                first = false;
-
-            globalCode.append("if (strcmp(className, \"").append(dotName).append("\") == 0) {\n");
-            // globalCode.append(" printf(\"Match found for %s, registering %d methods\\n\",
-            // className, ").append(methods.size()).append("); fflush(stdout);\n");
-
-            globalCode.append("        JNINativeMethod methods_").append(safeClassName).append("[] = {\n");
-            for (NativeEntry method : methods) {
-                globalCode.append("            {\"").append(method.methodName).append("\", \"")
-                        .append(method.signature).append("\", (void *)&").append(method.cFunctionName).append("},\n");
-            }
-            globalCode.append("        };\n");
-
-            // RegisterNatives expects the target class, which is passed as 'target'
-            // argument.
-            globalCode.append("        if ((*env)->RegisterNatives(env, target, methods_").append(safeClassName)
-                    .append(", ").append(methods.size()).append(") < 0) {\n");
-            // globalCode.append(" printf(\"RegisterNatives failed for %s\\n\", className);
-            // fflush(stdout);\n");
-            globalCode.append("            (*env)->ExceptionDescribe(env);\n");
-            globalCode.append("            (*env)->ExceptionClear(env);\n");
-            globalCode.append("        } else {\n");
-            // globalCode.append(" printf(\"RegisterNatives success for %s\\n\", className);
-            // fflush(stdout);\n");
-            globalCode.append("        }\n");
-            globalCode.append("    }\n");
-        }
-
-        globalCode.append("\n    (*env)->ReleaseStringUTFChars(env, nameStr, className);\n");
-        globalCode.append("}\n");
-
-        // Write to file
-        File outFile = new File(NativeObfuscator.getInstance().getTmpdir(), "native-lib.c");
-        try (FileWriter writer = new FileWriter(outFile)) {
-            writer.write(globalCode.toString());
+        File outFile = new File(processor.getNativeObfuscator().getTmpdir(), "native-lib.c");
+        try {
+            Files.writeString(outFile.toPath(), source, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new IllegalStateException("Unable to write generated native source", e);
         }
     }
+
 }

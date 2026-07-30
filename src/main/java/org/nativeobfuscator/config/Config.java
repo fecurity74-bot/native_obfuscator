@@ -29,6 +29,9 @@ public class Config {
     private boolean stringEncryption;
     private boolean flowObfuscation;
     private boolean antiDebug;
+    private boolean irOptimization;
+    private boolean irObfuscation;
+    private boolean lifterResistance;
 
     public Config() {
         NativeObfuscator.getLogger().info("Loading config...");
@@ -54,6 +57,9 @@ public class Config {
         this.stringEncryption = config.getBoolean("obfuscation.stringEncryption", true);
         this.flowObfuscation = config.getBoolean("obfuscation.flowObfuscation", true);
         this.antiDebug = config.getBoolean("obfuscation.antiDebug", true);
+        this.irOptimization = config.getBoolean("optimization.ir", true);
+        this.irObfuscation = config.getBoolean("obfuscation.ir", true);
+        this.lifterResistance = config.getBoolean("obfuscation.lifterResistance", true);
     }
 
     public void saveResource(@NotNull String resourcePath, boolean replace) {

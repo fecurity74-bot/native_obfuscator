@@ -261,8 +261,8 @@ public class NativeProcessor {
         // Handle INVOKEDYNAMIC before generation
         handleInvokeDynamic(owner, method);
 
-        // 1. Generate C code for the method
-        String cCode = generator.generateMethod(owner, method);
+        // Generate native code before replacing the Java implementation.
+        generator.generateMethod(owner, method);
 
         // 2. Modify Java method to be native
         method.getMethodNode().access |= Opcodes.ACC_NATIVE;

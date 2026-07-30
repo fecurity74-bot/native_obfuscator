@@ -15,18 +15,23 @@ import java.util.jar.JarFile;
 
 import java.util.jar.Manifest;
 
-public class JarLoader {
+public final class JarLoader {
+    private final NativeObfuscator context;
+
+    public JarLoader(NativeObfuscator context) {
+        this.context = context;
+    }
 
     public void loadInput() {
-        NativeObfuscator.getInstance().classes.clear();
-        NativeObfuscator.getInstance().classpath.clear();
-        NativeObfuscator.getInstance().resources.clear();
-        try (JarFile jarFile = new JarFile(NativeObfuscator.getInstance().getConfig().getInputJar())) {
+        context.classes.clear();
+        context.classpath.clear();
+        context.resources.clear();
+        try (JarFile jarFile = new JarFile(context.getConfig().getInputJar())) {
             Manifest manifest = jarFile.getManifest();
             if (manifest != null) {
                 try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
                     manifest.write(baos);
-                    NativeObfuscator.getInstance().resources.put("META-INF/MANIFEST.MF", baos.toByteArray());
+                    context.resources.put("META-INF/MANIFEST.MF", baos.toByteArray());
                 }
             }
 
@@ -43,18 +48,18 @@ public class JarLoader {
                     String className = name.substring(0, name.length() - 6);
                     
                     try {
-                        if (NativeObfuscator.getInstance().classes.containsKey(className)) {
+                        if (context.classes.containsKey(className)) {
                             NativeObfuscator.getLogger().warn("Ignoring duplicate input class entry: {}", name);
                             continue;
                         }
-                        NativeObfuscator.getInstance().classes.put(className, ClassWrapper.from(new ClassReader(content)));
-                        NativeObfuscator.getInstance().classpath.put(className, ClassWrapper.fromLib(new ClassReader(content)));
+                        context.classes.put(className, ClassWrapper.from(new ClassReader(content)));
+                        context.classpath.put(className, ClassWrapper.fromLib(new ClassReader(content)));
                     } catch (Throwable e) {
                         NativeObfuscator.getLogger().warn(String.format("Error while loading input class: \"%s\" (loading as resources instead)", className));
-                        NativeObfuscator.getInstance().resources.putIfAbsent(name, content);
+                        context.resources.putIfAbsent(name, content);
                     }
                 } else {
-                    if (NativeObfuscator.getInstance().resources.putIfAbsent(name, content) != null) {
+                    if (context.resources.putIfAbsent(name, content) != null) {
                         NativeObfuscator.getLogger().warn("Ignoring duplicate input resource entry: {}", name);
                     }
                 }
@@ -65,13 +70,12 @@ public class JarLoader {
     }
 
     public void saveOutput() {
-        String outputPath = NativeObfuscator.getInstance().getConfig().getOutputJar();
+        String outputPath = context.getConfig().getOutputJar();
         File outputFile = new File(outputPath);
         NativeObfuscator.getLogger().info("Saving output to: " + outputFile.getAbsolutePath());
         
         try {
-            JarArchiveWriter.write(outputFile, NativeObfuscator.getInstance().getClasses(),
-                    NativeObfuscator.getInstance().getResources());
+            JarArchiveWriter.write(outputFile, context.getClasses(), context.getResources());
             NativeObfuscator.getLogger().info("Output saved successfully.");
         } catch (IOException e) {
             NativeObfuscator.getLogger().error("Failed to save output jar", e);
@@ -80,7 +84,7 @@ public class JarLoader {
     }
 
     public void loadLib() {
-        for (String path : NativeObfuscator.getInstance().getConfig().getLibraries()) {
+        for (String path : context.getConfig().getLibraries()) {
             File libFile = new File(path);
             if (!libFile.exists()) {
                 NativeObfuscator.getLogger().warn(String.format("Lib file \"%s\" not found", path));
@@ -108,7 +112,8 @@ public class JarLoader {
                 String name = entry.getName();
                 if (name.endsWith(".class")) {
                     try {
-                        NativeObfuscator.getInstance().classpath.put(name.substring(0, name.length() - 6), ClassWrapper.fromLib(new ClassReader(jarFile.getInputStream(entry))));
+                        context.classpath.put(name.substring(0, name.length() - 6),
+                                ClassWrapper.fromLib(new ClassReader(jarFile.getInputStream(entry))));
                     } catch (Throwable e) {
                         NativeObfuscator.getLogger().warn(String.format("Error while loading lib class: \"%s\" (loading as resources instead)", entry.getName()));
                         //this.resources.put(name, IOUtils.toByteArray(jarFile.getInputStream(entry)));

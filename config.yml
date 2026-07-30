@@ -9,5 +9,9 @@ excludes:
   -
 obfuscation:
   stringEncryption: false
-  flowObfuscation: false
+  flowObfuscation: true
   antiDebug: true
+  ir: true
+  lifterResistance: true
+optimization:
+  ir: true

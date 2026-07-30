@@ -18,9 +18,6 @@ public class NativeObfuscator {
 
     @Getter
     public static Logger logger = LogManager.getLogger(NativeObfuscator.class);
-    @Getter
-    public static NativeObfuscator instance;
-
     private final JarLoader loader;
     private final NativeProcessor processor;
 
@@ -31,30 +28,25 @@ public class NativeObfuscator {
     public final Map<String, byte[]> resources;
 
     public final File tmpdir = new File(System.getProperty("java.io.tmpdir"), "j2c_" + UUID.randomUUID());
+
     public NativeObfuscator() {
-        instance = this;
-
-        if (!this.tmpdir.exists()) {
-            this.tmpdir.mkdirs();
-        }
-
         this.config = new Config();
-
         this.classes = new HashMap<>();
         this.classpath = new HashMap<>();
         this.resources = new HashMap<>();
+        this.loader = new JarLoader(this);
+        this.processor = new NativeProcessor(this);
+    }
 
-        this.loader = new JarLoader();
+    public void run() {
+        if (!tmpdir.exists() && !tmpdir.mkdirs()) {
+            throw new IllegalStateException("Unable to create temporary directory: " + tmpdir);
+        }
         this.loader.loadInput();
         this.loader.loadLib();
-
-        this.processor = new NativeProcessor(this);
         this.processor.process();
-
-        this.deleteDirectory(this.tmpdir);
-        //this.cleanup();
-
         this.loader.saveOutput();
+        this.deleteDirectory(this.tmpdir);
     }
 
     private void cleanup() {
