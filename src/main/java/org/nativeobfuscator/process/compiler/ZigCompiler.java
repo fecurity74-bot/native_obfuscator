@@ -1,6 +1,6 @@
-package org.nativeobfuscator.process;
+package org.nativeobfuscator.process.compiler;
 
-import org.nativeobfuscator.Jnic;
+import org.nativeobfuscator.NativeObfuscator;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -30,7 +30,7 @@ public final class ZigCompiler {
         command.add(output.getAbsolutePath());
         command.add(cFile.getAbsolutePath());
 
-        Jnic.getLogger().info("Compiling j2c.dll for Windows x64...");
+        NativeObfuscator.getLogger().info("Compiling j2c.dll for Windows x64...");
         try {
             ProcessBuilder builder = new ProcessBuilder(command);
             builder.redirectErrorStream(true);
@@ -45,18 +45,18 @@ public final class ZigCompiler {
             }
             int exitCode = process.waitFor();
             if (exitCode != 0) {
-                Jnic.getLogger().error("Zig failed with exit code {}:\n{}",
+                NativeObfuscator.getLogger().error("Zig failed with exit code {}:\n{}",
                         exitCode, compilerOutput);
                 return false;
             }
             if (!output.isFile() || output.length() == 0) {
-                Jnic.getLogger().error("Zig returned success but j2c.dll was not created.");
+                NativeObfuscator.getLogger().error("Zig returned success but j2c.dll was not created.");
                 return false;
             }
-            Jnic.getLogger().info("Compilation successful: j2c.dll");
+            NativeObfuscator.getLogger().info("Compilation successful: j2c.dll");
             return true;
         } catch (Exception error) {
-            Jnic.getLogger().error("Failed to compile j2c.dll", error);
+            NativeObfuscator.getLogger().error("Failed to compile j2c.dll", error);
             return false;
         }
     }

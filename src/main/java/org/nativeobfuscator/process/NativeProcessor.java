@@ -1,8 +1,9 @@
 package org.nativeobfuscator.process;
 
-import org.nativeobfuscator.Jnic;
-import org.nativeobfuscator.generator.CGenerator;
+import org.nativeobfuscator.NativeObfuscator;
+import org.nativeobfuscator.generator.Generator;
 import org.nativeobfuscator.generator.instruction.OpcodeSupport;
+import org.nativeobfuscator.process.compiler.ZigCompiler;
 import org.nativeobfuscator.utils.MatcherUtils;
 import org.nativeobfuscator.utils.asm.ClassWrapper;
 import org.nativeobfuscator.utils.asm.MethodWrapper;
@@ -31,21 +32,21 @@ public class NativeProcessor {
     private static final String INCLUDE_ANNOTATION =
             "Lorg/nativeobfuscator/annotation/Include;";
     @Getter
-    private final Jnic jnic;
-    private final CGenerator generator;
+    private final NativeObfuscator nativeObfuscator;
+    private final Generator generator;
     private final Set<String> generatedNativeMethods = new HashSet<>();
     private final Set<ClassWrapper> processedClasses = new HashSet<>();
 
-    public NativeProcessor(Jnic jnic) {
-        this.jnic = jnic;
-        this.generator = new CGenerator(this);
+    public NativeProcessor(NativeObfuscator nativeObfuscator) {
+        this.nativeObfuscator = nativeObfuscator;
+        this.generator = new Generator(this);
     }
 
     public boolean isNative(String owner, String name, String desc) {
         if (generatedNativeMethods.contains(methodKey(owner, name, desc))) {
             return true;
         }
-        ClassWrapper classWrapper = jnic.getClasses().get(owner);
+        ClassWrapper classWrapper = nativeObfuscator.getClasses().get(owner);
         if (classWrapper == null)
             return false;
         if (!shouldProcessClass(classWrapper))
@@ -60,10 +61,10 @@ public class NativeProcessor {
     }
 
     public void process() {
-        Jnic.getLogger().info("Starting native processing...");
+        NativeObfuscator.getLogger().info("Starting native processing...");
 
         HashMap<String, ClassWrapper> temp = new HashMap<>();
-        for (ClassWrapper classWrapper : jnic.getClasses().values()) {
+        for (ClassWrapper classWrapper : nativeObfuscator.getClasses().values()) {
             if (!shouldProcessClass(classWrapper))
                 continue;
 
@@ -84,7 +85,7 @@ public class NativeProcessor {
             }
         }
 
-        jnic.getClasses().putAll(temp);
+        nativeObfuscator.getClasses().putAll(temp);
 
         // Finalize generation (write C files, compile, etc.)
         generator.finalizeGeneration();
@@ -92,29 +93,29 @@ public class NativeProcessor {
         // Extract jni.h from resources
         try (InputStream is = getClass().getResourceAsStream("/jni.h")) {
             if (is != null) {
-                Files.copy(is, new File(jnic.getTmpdir(), "jni.h").toPath(), StandardCopyOption.REPLACE_EXISTING);
+                Files.copy(is, new File(nativeObfuscator.getTmpdir(), "jni.h").toPath(), StandardCopyOption.REPLACE_EXISTING);
             } else {
-                Jnic.getLogger().warn("jni.h not found in resources. Compilation might fail if system headers are missing.");
+                NativeObfuscator.getLogger().warn("jni.h not found in resources. Compilation might fail if system headers are missing.");
             }
         } catch (IOException e) {
-            Jnic.getLogger().error("Failed to extract jni.h: " + e.getMessage());
+            NativeObfuscator.getLogger().error("Failed to extract jni.h: " + e.getMessage());
         }
 
         // Compile using Zig
-        File cFile = new File(jnic.getTmpdir(), "native-lib.c");
+        File cFile = new File(nativeObfuscator.getTmpdir(), "native-lib.c");
 
         if (cFile.exists()) {
-            if (!ZigCompiler.compile(cFile, jnic.getTmpdir())) {
+            if (!ZigCompiler.compile(cFile, nativeObfuscator.getTmpdir())) {
                 throw new IllegalStateException("Native compilation failed; output JAR was not written. "
-                        + "Generated sources are in " + jnic.getTmpdir().getAbsolutePath());
+                        + "Generated sources are in " + nativeObfuscator.getTmpdir().getAbsolutePath());
             }
-            File library = new File(jnic.getTmpdir(), "j2c.dll");
+            File library = new File(nativeObfuscator.getTmpdir(), "j2c.dll");
             if (!library.isFile() || library.length() == 0) {
                 throw new IllegalStateException("Native compilation produced no j2c.dll");
             }
             try {
-                jnic.getResources().put("j2c.dll", Files.readAllBytes(library.toPath()));
-                Jnic.getLogger().info("Added j2c.dll to output JAR.");
+                nativeObfuscator.getResources().put("j2c.dll", Files.readAllBytes(library.toPath()));
+                NativeObfuscator.getLogger().info("Added j2c.dll to output JAR.");
             } catch (IOException error) {
                 throw new UncheckedIOException("Failed to read compiled j2c.dll", error);
             }
@@ -127,7 +128,7 @@ public class NativeProcessor {
         String className = classWrapper.getName();
 
         // 1. Check excludes first
-        List<String> excludes = jnic.getConfig().getExclude();
+        List<String> excludes = nativeObfuscator.getConfig().getExclude();
         if (excludes != null) {
             for (String exclude : excludes) {
                 if (MatcherUtils.match(className, exclude)) {
@@ -137,7 +138,7 @@ public class NativeProcessor {
         }
 
         // 2. Check includes
-        List<String> includes = jnic.getConfig().getInclude();
+        List<String> includes = nativeObfuscator.getConfig().getInclude();
         if (includes != null && !includes.isEmpty()) {
             boolean included = false;
             for (String include : includes) {
@@ -168,13 +169,13 @@ public class NativeProcessor {
         if ("getResourceAsStream".equals(name) && "(Ljava/lang/String;)Ljava/io/InputStream;".equals(desc)) {
             return false;
         }
-        if (jnic.getConfig().isAnnotationMode()
+        if (nativeObfuscator.getConfig().isAnnotationMode()
                 && !hasIncludeAnnotation(methodWrapper.getMethodNode())) {
             return false;
         }
 
         if (hasUnsupportedOpcodes(methodWrapper.getMethodNode())) {
-            Jnic.getLogger().warn("Skipping method with unsupported opcodes: " + name);
+            NativeObfuscator.getLogger().warn("Skipping method with unsupported opcodes: " + name);
             return false;
         }
 
@@ -215,7 +216,7 @@ public class NativeProcessor {
     private void injectLoader(ClassWrapper classWrapper, HashMap<String, ClassWrapper> classes) {
         try {
             String loader = "org/nativeobfuscator/NativeLoader";
-            if (!jnic.getClasses().containsKey(loader) && !classes.containsKey(loader)) {
+            if (!nativeObfuscator.getClasses().containsKey(loader) && !classes.containsKey(loader)) {
                 InputStream is = getClass().getResourceAsStream("/" + loader + ".class");
                 if (is == null) {
                     throw new IOException("Could not find NativeLoader.class to inject!");
@@ -232,7 +233,7 @@ public class NativeProcessor {
                 }
             }
         } catch (Exception e) {
-            Jnic.getLogger().error("Failed to inject NativeLoader", e);
+            NativeObfuscator.getLogger().error("Failed to inject NativeLoader", e);
         }
 
         InsnList il = new InsnList();
@@ -255,7 +256,7 @@ public class NativeProcessor {
     }
 
     private void processMethod(ClassWrapper owner, MethodWrapper method) {
-        Jnic.getLogger().info("Processing method: " + owner.getName() + "." + method.getOriginalName());
+        NativeObfuscator.getLogger().info("Processing method: " + owner.getName() + "." + method.getOriginalName());
 
         // Handle INVOKEDYNAMIC before generation
         handleInvokeDynamic(owner, method);
@@ -284,7 +285,7 @@ public class NativeProcessor {
         }
 
         for (InvokeDynamicInsnNode indy : indyNodes) {
-            String helperName = "indy_wrapper_" + Math.abs(indy.hashCode());
+            String helperName = "lamda$" + Math.abs(indy.hashCode());
 
             // Create helper method: static synthetic
             MethodNode helper = new MethodNode(Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, helperName, indy.desc, null,

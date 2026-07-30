@@ -1,12 +1,12 @@
 package org.nativeobfuscator;
 
 import org.nativeobfuscator.config.Config;
+import org.nativeobfuscator.io.JarLoader;
 import org.nativeobfuscator.process.NativeProcessor;
 import org.nativeobfuscator.utils.asm.ClassWrapper;
 import lombok.Getter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bspfsystems.yamlconfiguration.file.YamlConfiguration;
 
 import java.io.File;
 import java.util.HashMap;
@@ -14,14 +14,14 @@ import java.util.Map;
 import java.util.UUID;
 
 @Getter
-public class Jnic {
+public class NativeObfuscator {
 
     @Getter
-    public static Logger logger = LogManager.getLogger(Jnic.class);
+    public static Logger logger = LogManager.getLogger(NativeObfuscator.class);
     @Getter
-    public static Jnic instance;
+    public static NativeObfuscator instance;
 
-    private final SkyJarLoader loader;
+    private final JarLoader loader;
     private final NativeProcessor processor;
 
     public final Config config;
@@ -30,8 +30,8 @@ public class Jnic {
     public final Map<String, ClassWrapper> classpath;
     public final Map<String, byte[]> resources;
 
-    public final File tmpdir = new File(System.getProperty("java.io.tmpdir"), "jnic_" + UUID.randomUUID());
-    public Jnic() {
+    public final File tmpdir = new File(System.getProperty("java.io.tmpdir"), "j2c_" + UUID.randomUUID());
+    public NativeObfuscator() {
         instance = this;
 
         if (!this.tmpdir.exists()) {
@@ -44,7 +44,7 @@ public class Jnic {
         this.classpath = new HashMap<>();
         this.resources = new HashMap<>();
 
-        this.loader = new SkyJarLoader();
+        this.loader = new JarLoader();
         this.loader.loadInput();
         this.loader.loadLib();
 

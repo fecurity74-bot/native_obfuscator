@@ -22,13 +22,13 @@ import java.util.jar.JarOutputStream;
  * Writes the output archive transactionally and guarantees that every normalized
  * entry name occurs at most once.
  */
-final class JarArchiveWriter {
+public final class JarArchiveWriter {
     private static final String MANIFEST = "META-INF/MANIFEST.MF";
 
     private JarArchiveWriter() {
     }
 
-    static void write(File outputFile, Map<String, ClassWrapper> classes, Map<String, byte[]> resources)
+    public static void write(File outputFile, Map<String, ClassWrapper> classes, Map<String, byte[]> resources)
             throws IOException {
         Path output = outputFile.toPath().toAbsolutePath().normalize();
         Path parent = output.getParent();
@@ -61,15 +61,15 @@ final class JarArchiveWriter {
                 continue;
             }
             if (isInvalidatedSignature(name)) {
-                Jnic.getLogger().debug("Dropping invalidated JAR signature: {}", name);
+                NativeObfuscator.getLogger().debug("Dropping invalidated JAR signature: {}", name);
                 continue;
             }
             if (entries.containsKey(name)) {
-                Jnic.getLogger().warn("Skipping resource that collides with generated class: {}", name);
+                NativeObfuscator.getLogger().warn("Skipping resource that collides with generated class: {}", name);
                 continue;
             }
             if (entries.putIfAbsent(name, entry.getValue()) != null) {
-                Jnic.getLogger().warn("Skipping duplicate normalized resource entry: {}", name);
+                NativeObfuscator.getLogger().warn("Skipping duplicate normalized resource entry: {}", name);
             }
         }
 
@@ -99,7 +99,7 @@ final class JarArchiveWriter {
         }
     }
 
-    static String normalizeEntryName(String rawName) throws IOException {
+    public static String normalizeEntryName(String rawName) throws IOException {
         if (rawName == null || rawName.isBlank()) {
             throw new IOException("Empty JAR entry name");
         }

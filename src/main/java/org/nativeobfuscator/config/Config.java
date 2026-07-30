@@ -1,17 +1,14 @@
 package org.nativeobfuscator.config;
 
-import org.nativeobfuscator.Jnic;
+import org.nativeobfuscator.NativeObfuscator;
 import lombok.Getter;
 import lombok.Setter;
-import org.bspfsystems.yamlconfiguration.configuration.ConfigurationSection;
 import org.bspfsystems.yamlconfiguration.file.YamlConfiguration;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.List;
 
@@ -34,7 +31,7 @@ public class Config {
     private boolean antiDebug;
 
     public Config() {
-        Jnic.getLogger().info("Loading config...");
+        NativeObfuscator.getLogger().info("Loading config...");
         this.configFile = new File("config.yml");
         if (!this.configFile.exists()) {
             this.saveResource("config.yml", false);
@@ -77,7 +74,7 @@ public class Config {
                 if (outFile.exists() && !replace) return;
                 Files.copy(in, outFile.toPath());
             } catch (IOException e) {
-                Jnic.getLogger().error("Could not save " + outFile.getName() + " to " + outFile, e);
+                NativeObfuscator.getLogger().error("Could not save " + outFile.getName() + " to " + outFile, e);
             }
         } else {
             throw new IllegalArgumentException("ResourcePath cannot be null or empty");

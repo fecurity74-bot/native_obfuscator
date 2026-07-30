@@ -1,12 +1,11 @@
 package org.nativeobfuscator.utils.asm;
 
-import org.nativeobfuscator.Jnic;
+import org.nativeobfuscator.NativeObfuscator;
 import lombok.Getter;
 import lombok.Setter;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -253,7 +252,7 @@ public class ClassWrapper implements Opcodes {
             classNode.accept(classWriter);
             return classWriter.toByteArray();
         } catch (Throwable t) {
-            Jnic.getLogger().warn(String.format("Error writing class %s. Trying with basic writer.", classNode.name + ".class"));
+            NativeObfuscator.getLogger().warn(String.format("Error writing class %s. Trying with basic writer.", classNode.name + ".class"));
             t.printStackTrace(System.out);
 
             classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);

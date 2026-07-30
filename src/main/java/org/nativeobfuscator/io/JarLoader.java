@@ -1,5 +1,7 @@
-package org.nativeobfuscator;
+package org.nativeobfuscator.io;
 
+import org.nativeobfuscator.JarArchiveWriter;
+import org.nativeobfuscator.NativeObfuscator;
 import org.nativeobfuscator.utils.asm.ClassWrapper;
 import org.objectweb.asm.ClassReader;
 
@@ -13,18 +15,18 @@ import java.util.jar.JarFile;
 
 import java.util.jar.Manifest;
 
-public class SkyJarLoader {
+public class JarLoader {
 
     public void loadInput() {
-        Jnic.getInstance().classes.clear();
-        Jnic.getInstance().classpath.clear();
-        Jnic.getInstance().resources.clear();
-        try (JarFile jarFile = new JarFile(Jnic.getInstance().getConfig().getInputJar())) {
+        NativeObfuscator.getInstance().classes.clear();
+        NativeObfuscator.getInstance().classpath.clear();
+        NativeObfuscator.getInstance().resources.clear();
+        try (JarFile jarFile = new JarFile(NativeObfuscator.getInstance().getConfig().getInputJar())) {
             Manifest manifest = jarFile.getManifest();
             if (manifest != null) {
                 try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
                     manifest.write(baos);
-                    Jnic.getInstance().resources.put("META-INF/MANIFEST.MF", baos.toByteArray());
+                    NativeObfuscator.getInstance().resources.put("META-INF/MANIFEST.MF", baos.toByteArray());
                 }
             }
 
@@ -41,19 +43,19 @@ public class SkyJarLoader {
                     String className = name.substring(0, name.length() - 6);
                     
                     try {
-                        if (Jnic.getInstance().classes.containsKey(className)) {
-                            Jnic.getLogger().warn("Ignoring duplicate input class entry: {}", name);
+                        if (NativeObfuscator.getInstance().classes.containsKey(className)) {
+                            NativeObfuscator.getLogger().warn("Ignoring duplicate input class entry: {}", name);
                             continue;
                         }
-                        Jnic.getInstance().classes.put(className, ClassWrapper.from(new ClassReader(content)));
-                        Jnic.getInstance().classpath.put(className, ClassWrapper.fromLib(new ClassReader(content)));
+                        NativeObfuscator.getInstance().classes.put(className, ClassWrapper.from(new ClassReader(content)));
+                        NativeObfuscator.getInstance().classpath.put(className, ClassWrapper.fromLib(new ClassReader(content)));
                     } catch (Throwable e) {
-                        Jnic.getLogger().warn(String.format("Error while loading input class: \"%s\" (loading as resources instead)", className));
-                        Jnic.getInstance().resources.putIfAbsent(name, content);
+                        NativeObfuscator.getLogger().warn(String.format("Error while loading input class: \"%s\" (loading as resources instead)", className));
+                        NativeObfuscator.getInstance().resources.putIfAbsent(name, content);
                     }
                 } else {
-                    if (Jnic.getInstance().resources.putIfAbsent(name, content) != null) {
-                        Jnic.getLogger().warn("Ignoring duplicate input resource entry: {}", name);
+                    if (NativeObfuscator.getInstance().resources.putIfAbsent(name, content) != null) {
+                        NativeObfuscator.getLogger().warn("Ignoring duplicate input resource entry: {}", name);
                     }
                 }
             }
@@ -63,25 +65,25 @@ public class SkyJarLoader {
     }
 
     public void saveOutput() {
-        String outputPath = Jnic.getInstance().getConfig().getOutputJar();
+        String outputPath = NativeObfuscator.getInstance().getConfig().getOutputJar();
         File outputFile = new File(outputPath);
-        Jnic.getLogger().info("Saving output to: " + outputFile.getAbsolutePath());
+        NativeObfuscator.getLogger().info("Saving output to: " + outputFile.getAbsolutePath());
         
         try {
-            JarArchiveWriter.write(outputFile, Jnic.getInstance().getClasses(),
-                    Jnic.getInstance().getResources());
-            Jnic.getLogger().info("Output saved successfully.");
+            JarArchiveWriter.write(outputFile, NativeObfuscator.getInstance().getClasses(),
+                    NativeObfuscator.getInstance().getResources());
+            NativeObfuscator.getLogger().info("Output saved successfully.");
         } catch (IOException e) {
-            Jnic.getLogger().error("Failed to save output jar", e);
+            NativeObfuscator.getLogger().error("Failed to save output jar", e);
             throw new RuntimeException(e);
         }
     }
 
     public void loadLib() {
-        for (String path : Jnic.getInstance().getConfig().getLibraries()) {
+        for (String path : NativeObfuscator.getInstance().getConfig().getLibraries()) {
             File libFile = new File(path);
             if (!libFile.exists()) {
-                Jnic.getLogger().warn(String.format("Lib file \"%s\" not found", path));
+                NativeObfuscator.getLogger().warn(String.format("Lib file \"%s\" not found", path));
                 continue;
             }
 
@@ -106,9 +108,9 @@ public class SkyJarLoader {
                 String name = entry.getName();
                 if (name.endsWith(".class")) {
                     try {
-                        Jnic.getInstance().classpath.put(name.substring(0, name.length() - 6), ClassWrapper.fromLib(new ClassReader(jarFile.getInputStream(entry))));
+                        NativeObfuscator.getInstance().classpath.put(name.substring(0, name.length() - 6), ClassWrapper.fromLib(new ClassReader(jarFile.getInputStream(entry))));
                     } catch (Throwable e) {
-                        Jnic.getLogger().warn(String.format("Error while loading lib class: \"%s\" (loading as resources instead)", entry.getName()));
+                        NativeObfuscator.getLogger().warn(String.format("Error while loading lib class: \"%s\" (loading as resources instead)", entry.getName()));
                         //this.resources.put(name, IOUtils.toByteArray(jarFile.getInputStream(entry)));
                     }
                 }

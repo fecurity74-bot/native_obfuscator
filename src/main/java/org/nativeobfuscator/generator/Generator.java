@@ -1,6 +1,6 @@
 package org.nativeobfuscator.generator;
 
-import org.nativeobfuscator.Jnic;
+import org.nativeobfuscator.NativeObfuscator;
 import org.nativeobfuscator.config.Config;
 import org.nativeobfuscator.generator.instruction.InstructionContext;
 import org.nativeobfuscator.generator.instruction.InstructionDispatcher;
@@ -22,7 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class CGenerator {
+public class Generator {
     private final Config config;
     private final NativeProcessor processor;
     private final Obfuscator obfuscator;
@@ -58,9 +58,9 @@ public class CGenerator {
     private String currentMethodName;
     private ClassWrapper currentClass;
 
-    public CGenerator(NativeProcessor processor) {
+    public Generator(NativeProcessor processor) {
         this.processor = processor;
-        this.config = processor.getJnic().getConfig();
+        this.config = processor.getNativeObfuscator().getConfig();
         this.obfuscator = new Obfuscator(config);
 
         // Add headers
@@ -1764,7 +1764,7 @@ public class CGenerator {
 
                 boolean canDirectCall = isStatic || isSpecial;
                 if (!canDirectCall && isNativeTarget) {
-                    ClassWrapper ownerCW = processor.getJnic().getClasses().get(ownerClass);
+                    ClassWrapper ownerCW = processor.getNativeObfuscator().getClasses().get(ownerClass);
                     if (ownerCW != null) {
                         if (ownerCW.isFinal()) {
                             canDirectCall = true;
@@ -1778,7 +1778,7 @@ public class CGenerator {
                 }
 
                 if (canDirectCall && isNativeTarget
-                        && !methodName.startsWith("<") && !methodName.startsWith("indy_wrapper_")) {
+                        && !methodName.startsWith("<") && !methodName.startsWith("lambda$")) {
                     // Direct Call
                     // Use hex string here too
                     String cFunc = nativeFunctionName(ownerClass, methodName, methodDesc);
@@ -2544,7 +2544,7 @@ public class CGenerator {
         globalCode.append("}\n");
 
         // Write to file
-        File outFile = new File(Jnic.getInstance().getTmpdir(), "native-lib.c");
+        File outFile = new File(NativeObfuscator.getInstance().getTmpdir(), "native-lib.c");
         try (FileWriter writer = new FileWriter(outFile)) {
             writer.write(globalCode.toString());
         } catch (IOException e) {
